@@ -29,14 +29,51 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ==================== НАСТРОЙКИ ПУТЕЙ ДЛЯ ФАЙЛОВ ====================
+# Определяем директорию для хранения данных
+# На Railway используем /data (Persistent Volume) или /app/data
+# Локально используем текущую папку
+
+def get_data_dir():
+    """Определяет правильную директорию для хранения данных"""
+    # Проверяем переменную окружения Railway
+    railway_volume = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "")
+    if railway_volume and os.path.exists(railway_volume) and os.access(railway_volume, os.W_OK):
+        return railway_volume
+    
+    # Проверяем стандартные пути для Volume
+    for path in ["/data", "/app/data"]:
+        if os.path.exists(path) and os.access(path, os.W_OK):
+            return path
+    
+    # Создаём папку data в текущей директории
+    local_data = os.path.join(os.getcwd(), "data")
+    os.makedirs(local_data, exist_ok=True)
+    return local_data
+
+DATA_DIR = get_data_dir()
+SESSIONS_DIR = os.path.join(DATA_DIR, "sessions")
+
+# Создаём необходимые директории
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(SESSIONS_DIR, exist_ok=True)
+
+# Пути к файлам
+DB_PATH = os.path.join(DATA_DIR, "users.db")
+MODERATORS_FILE = os.path.join(DATA_DIR, "moderators.json")
+USERS_FILE = os.path.join(DATA_DIR, "users_list.json")
+REPORTER_ACCOUNTS_FILE = os.path.join(DATA_DIR, "reporter_accounts.json")
+
+logger.info(f"📁 Директория данных: {DATA_DIR}")
+logger.info(f"📁 Директория сессий: {SESSIONS_DIR}")
+logger.info(f"📄 База данных: {DB_PATH}")
+
+# ==================== КОНФИГУРАЦИЯ ====================
 BOT_TOKEN = "8740017892:AAF2DDdjZvOiCjug7XvMUyIoO76YSmP-JSE"
 CRYPTO_PAY_TOKEN = "563714:AAoNQWxKCzZLDkotn5jjJdl0QFwMCAtEbtD"
 CRYPTO_PAY_TESTNET = False
 
 ADMIN_IDS = [964442694]
-MODERATORS_FILE = "moderators.json"
-USERS_FILE = "users_list.json"
-REPORTER_ACCOUNTS_FILE = "reporter_accounts.json"
 
 REQUIRED_CHANNEL_INVITE = "https://t.me/+vOgz5RQNSmE5OGE0"
 REQUIRED_CHANNEL_USERNAME = None
@@ -201,41 +238,58 @@ TEXTS = {
 }
 
 class Database:
-    def __init__(self, db_name: str = "users.db"):
-        self.db_name = db_name
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path if db_path else DB_PATH
         self._init_db()
     
     def _init_db(self):
-        with sqlite3.connect(self.db_name) as conn:
-            c = conn.cursor()
-            c.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, reports INTEGER DEFAULT 0, total_purchased INTEGER DEFAULT 0, total_used INTEGER DEFAULT 0, language TEXT DEFAULT 'ru')")
-            c.execute("CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, sub_type TEXT, reports_limit INTEGER, reports_used INTEGER DEFAULT 0, active INTEGER DEFAULT 1, purchased_at TIMESTAMP)")
-            c.execute("CREATE TABLE IF NOT EXISTS purchases (purchase_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, item_type TEXT, item_name TEXT, reports_added INTEGER, price REAL, purchased_at TIMESTAMP)")
-            c.execute("CREATE TABLE IF NOT EXISTS report_usage (usage_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, target TEXT, used_at TIMESTAMP)")
-            c.execute("CREATE TABLE IF NOT EXISTS payment_sessions (user_id INTEGER PRIMARY KEY, invoice_id INTEGER, item_type TEXT, item_key TEXT, amount REAL, created_at TIMESTAMP, expires_at TIMESTAMP)")
-            conn.commit()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                c = conn.cursor()
+                c.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, reports INTEGER DEFAULT 0, total_purchased INTEGER DEFAULT 0, total_used INTEGER DEFAULT 0, language TEXT DEFAULT 'ru')")
+                c.execute("CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, sub_type TEXT, reports_limit INTEGER, reports_used INTEGER DEFAULT 0, active INTEGER DEFAULT 1, purchased_at TIMESTAMP)")
+                c.execute("CREATE TABLE IF NOT EXISTS purchases (purchase_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, item_type TEXT, item_name TEXT, reports_added INTEGER, price REAL, purchased_at TIMESTAMP)")
+                c.execute("CREATE TABLE IF NOT EXISTS report_usage (usage_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, target TEXT, used_at TIMESTAMP)")
+                c.execute("CREATE TABLE IF NOT EXISTS payment_sessions (user_id INTEGER PRIMARY KEY, invoice_id INTEGER, item_type TEXT, item_key TEXT, amount REAL, created_at TIMESTAMP, expires_at TIMESTAMP)")
+                conn.commit()
+                logger.info(f"✅ База данных инициализирована: {self.db_path}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации БД: {e}")
+            raise
     
     def get_user(self, user_id: int):
-        with sqlite3.connect(self.db_name) as conn:
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-            row = c.fetchone()
-            return dict(row) if row else None
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+                row = c.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Ошибка get_user: {e}")
+            return None
     
     def get_all_users(self):
-        with sqlite3.connect(self.db_name) as conn:
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute("SELECT user_id, reports, total_purchased, total_used, language FROM users")
-            return [dict(row) for row in c.fetchall()]
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                c.execute("SELECT user_id, reports, total_purchased, total_used, language FROM users")
+                return [dict(row) for row in c.fetchall()]
+        except Exception as e:
+            logger.error(f"Ошибка get_all_users: {e}")
+            return []
     
     def create_user(self, user_id: int, lang='ru'):
-        with sqlite3.connect(self.db_name) as conn:
-            c = conn.cursor()
-            c.execute("INSERT INTO users (user_id, language) VALUES (?, ?)", (user_id, lang))
-            conn.commit()
-            return self.get_user(user_id)
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                c = conn.cursor()
+                c.execute("INSERT INTO users (user_id, language) VALUES (?, ?)", (user_id, lang))
+                conn.commit()
+                return self.get_user(user_id)
+        except Exception as e:
+            logger.error(f"Ошибка create_user: {e}")
+            return None
     
     def get_or_create_user(self, user_id: int):
         user = self.get_user(user_id)
@@ -244,20 +298,20 @@ class Database:
         return user
     
     def update_language(self, user_id: int, lang: str):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             c.execute("UPDATE users SET language = ? WHERE user_id = ?", (lang, user_id))
             conn.commit()
     
     def add_reports(self, user_id: int, amount: int, item_name: str, price: float):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             c.execute("UPDATE users SET reports = reports + ?, total_purchased = total_purchased + ? WHERE user_id = ?", (amount, amount, user_id))
             c.execute("INSERT INTO purchases (user_id, item_type, item_name, reports_added, price, purchased_at) VALUES (?, 'subscription', ?, ?, ?, ?)", (user_id, item_name, amount, price, datetime.now()))
             conn.commit()
     
     def use_report(self, user_id: int, target: str) -> bool:
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             c.execute("SELECT reports FROM users WHERE user_id = ?", (user_id,))
             row = c.fetchone()
@@ -269,7 +323,7 @@ class Database:
             return True
     
     def add_subscription(self, user_id: int, sub_type: str, reports_limit: int, price: float = 0):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             c.execute("INSERT INTO subscriptions (user_id, sub_type, reports_limit, active, purchased_at) VALUES (?, ?, ?, 1, ?)", (user_id, sub_type, reports_limit, datetime.now()))
             c.execute("UPDATE users SET reports = reports + ?, total_purchased = total_purchased + ? WHERE user_id = ?", (reports_limit, reports_limit, user_id))
@@ -279,35 +333,35 @@ class Database:
             conn.commit()
     
     def get_active_subscriptions(self, user_id: int) -> List[dict]:
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT * FROM subscriptions WHERE user_id = ? AND active = 1 ORDER BY purchased_at DESC", (user_id,))
             return [dict(row) for row in c.fetchall()]
     
     def get_user_purchases(self, user_id: int, limit=10):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT * FROM purchases WHERE user_id = ? ORDER BY purchased_at DESC LIMIT ?", (user_id, limit))
             return [dict(row) for row in c.fetchall()]
     
     def get_user_usage(self, user_id: int, limit=10):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT * FROM report_usage WHERE user_id = ? ORDER BY used_at DESC LIMIT ?", (user_id, limit))
             return [dict(row) for row in c.fetchall()]
     
     def save_payment_session(self, user_id: int, invoice_id: int, item_type: str, item_key: str, amount: float, expires=1800):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             exp = datetime.now() + timedelta(seconds=expires)
             c.execute("INSERT OR REPLACE INTO payment_sessions (user_id, invoice_id, item_type, item_key, amount, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (user_id, invoice_id, item_type, item_key, amount, datetime.now(), exp))
             conn.commit()
     
     def get_payment_session(self, user_id: int):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT * FROM payment_sessions WHERE user_id = ? AND expires_at > ?", (user_id, datetime.now()))
@@ -315,13 +369,13 @@ class Database:
             return dict(row) if row else None
     
     def delete_payment_session(self, user_id: int):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             c.execute("DELETE FROM payment_sessions WHERE user_id = ?", (user_id,))
             conn.commit()
     
     def set_reports_direct(self, user_id: int, new_reports: int):
-        with sqlite3.connect(self.db_name) as conn:
+        with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             c.execute("UPDATE users SET reports = ? WHERE user_id = ?", (new_reports, user_id))
             conn.commit()
@@ -384,8 +438,8 @@ class ReporterManager:
             }
     
     async def create_account_with_session(self, phone: str, api_id: int, api_hash: str, code: str, password: str = None) -> tuple:
-        os.makedirs("sessions", exist_ok=True)
-        session_file = f"sessions/acc_{phone.replace('+', '')}"
+        os.makedirs(SESSIONS_DIR, exist_ok=True)
+        session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
         client = TelegramClient(session_file, api_id, api_hash)
         
         try:
@@ -431,7 +485,7 @@ class ReporterManager:
     async def connect(self, acc_id: int):
         acc = self.by_id.get(acc_id)
         if not acc: return False
-        os.makedirs("sessions", exist_ok=True)
+        os.makedirs(SESSIONS_DIR, exist_ok=True)
         cl = TelegramClient(acc["session_file"], acc["api_id"], acc["api_hash"], proxy=acc.get("proxy"))
         try:
             await cl.start()
@@ -683,17 +737,14 @@ async def add_account_api_hash(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     ctx.user_data["add_api_hash"] = api_hash
-    ctx.user_data["add_need_password"] = False
     
-    # Отправляем запрос кода
     status_msg = await update.message.reply_text(get_text(uid, "sending_code"), parse_mode="Markdown")
     
     phone = ctx.user_data["add_phone"]
     api_id = ctx.user_data["add_api_id"]
     api_hash = ctx.user_data["add_api_hash"]
     
-    # Создаём временного клиента для отправки кода
-    temp_session = f"temp_{int(time.time())}"
+    temp_session = os.path.join(SESSIONS_DIR, f"temp_{int(time.time())}")
     temp_client = TelegramClient(temp_session, api_id, api_hash)
     
     try:
@@ -701,7 +752,8 @@ async def add_account_api_hash(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await temp_client.send_code_request(phone)
         await temp_client.disconnect()
         
-        ctx.user_data["add_temp_client"] = temp_session
+        os.remove(temp_session + ".session") if os.path.exists(temp_session + ".session") else None
+        
         await status_msg.edit_text(get_text(uid, "enter_code"), parse_mode="Markdown")
         return CODE
     except Exception as e:
@@ -721,20 +773,18 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     phone = ctx.user_data["add_phone"]
     api_id = ctx.user_data["add_api_id"]
     api_hash = ctx.user_data["add_api_hash"]
+    session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
+    
+    client = TelegramClient(session_file, api_id, api_hash)
     
     try:
-        # Пытаемся войти с кодом
-        session_file = f"sessions/acc_{phone.replace('+', '')}"
-        client = TelegramClient(session_file, api_id, api_hash)
         await client.connect()
         
         try:
             await client.sign_in(phone, code)
-            # Успешный вход
             me = await client.get_me()
             await client.disconnect()
             
-            # Сохраняем аккаунт
             accounts = load_reporter_accounts()
             next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
             
@@ -758,9 +808,7 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return ConversationHandler.END
             
         except SessionPasswordNeededError:
-            # Требуется 2FA
             ctx.user_data["add_temp_client"] = client
-            ctx.user_data["add_need_password"] = True
             await status_msg.edit_text(get_text(uid, "enter_2fa"), parse_mode="Markdown")
             return PASSWORD
         except PhoneCodeInvalidError:
@@ -787,43 +835,40 @@ async def add_account_password(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     phone = ctx.user_data["add_phone"]
     api_id = ctx.user_data["add_api_id"]
     api_hash = ctx.user_data["add_api_hash"]
-    session_file = f"sessions/acc_{phone.replace('+', '')}"
+    session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
     
-    try:
+    client = ctx.user_data.get("add_temp_client")
+    if not client:
         client = TelegramClient(session_file, api_id, api_hash)
         await client.connect()
+    
+    try:
+        await client.sign_in(password=password)
+        me = await client.get_me()
+        await client.disconnect()
         
-        try:
-            await client.sign_in(password=password)
-            me = await client.get_me()
-            await client.disconnect()
-            
-            accounts = load_reporter_accounts()
-            next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
-            
-            new_acc = {
-                "id": next_id,
-                "phone": phone,
-                "api_id": api_id,
-                "api_hash": api_hash,
-                "session_file": session_file,
-                "proxy": None,
-                "is_active": True,
-                "reports_today": 0,
-                "max_reports_per_day": 50
-            }
-            accounts.append(new_acc)
-            save_reporter_accounts(accounts)
-            reporter.load_accounts()
-            await reporter.connect(next_id)
-            
-            await status_msg.edit_text(get_text(uid, "session_created", phone, next_id), parse_mode="Markdown")
-            return ConversationHandler.END
-            
-        except Exception as e:
-            await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
-            return ConversationHandler.END
-            
+        accounts = load_reporter_accounts()
+        next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
+        
+        new_acc = {
+            "id": next_id,
+            "phone": phone,
+            "api_id": api_id,
+            "api_hash": api_hash,
+            "session_file": session_file,
+            "proxy": None,
+            "is_active": True,
+            "reports_today": 0,
+            "max_reports_per_day": 50
+        }
+        accounts.append(new_acc)
+        save_reporter_accounts(accounts)
+        reporter.load_accounts()
+        await reporter.connect(next_id)
+        
+        await status_msg.edit_text(get_text(uid, "session_created", phone, next_id), parse_mode="Markdown")
+        return ConversationHandler.END
+        
     except Exception as e:
         await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
         return ConversationHandler.END
@@ -1182,11 +1227,16 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(get_text(uid, "welcome"), parse_mode="Markdown", reply_markup=await main_keyboard(uid))
 
 async def run():
+    logger.info("🚀 Запуск бота...")
+    logger.info(f"📁 Директория данных: {DATA_DIR}")
+    logger.info(f"📁 Директория сессий: {SESSIONS_DIR}")
+    logger.info(f"📄 База данных: {DB_PATH}")
+    
     logger.info("Подключение репортеров...")
     accounts = load_reporter_accounts()
     for acc in accounts:
         await reporter.connect(acc["id"])
-    logger.info(f"Подключено {len(reporter.clients)} аккаунтов")
+    logger.info(f"✅ Подключено {len(reporter.clients)} аккаунтов")
     
     app = Application.builder().token(BOT_TOKEN).build()
     
@@ -1211,7 +1261,7 @@ async def run():
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-    logger.info("Бот запущен")
+    logger.info("🤖 Бот запущен и готов к работе!")
     while True:
         await asyncio.sleep(3600)
 
