@@ -693,7 +693,6 @@ async def add_account_api_hash(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     ctx.user_data["add_api_hash"] = api_hash
-    ctx.user_data["add_code_requested"] = False
     
     status_msg = await update.message.reply_text(get_text(uid, "connecting"), parse_mode="Markdown")
     
@@ -737,21 +736,17 @@ async def add_account_api_hash(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         # Отправляем запрос кода
         await status_msg.edit_text(get_text(uid, "sending_code"), parse_mode="Markdown")
         
-        try:
-            # Пробуем отправить код
-            await client.send_code_request(phone)
-            ctx.user_data["add_code_requested"] = True
-            await status_msg.edit_text(get_text(uid, "code_sent"), parse_mode="Markdown")
-            await status_msg.edit_text(get_text(uid, "enter_code"), parse_mode="Markdown")
-            return CODE
-        except Exception as e:
-            error_msg = str(e)
-            if "FLOOD_WAIT" in error_msg:
-                await status_msg.edit_text(f"❌ Слишком много попыток. Подождите немного и попробуйте снова.\n\nНачните заново: /add_account")
-            else:
-                await status_msg.edit_text(f"❌ Ошибка: {error_msg}\n\nПроверьте API ID и API Hash.\nНачните заново: /add_account")
-            return ConversationHandler.END
-            
+        result = await client.send_code_request(phone)
+        # Сохраняем phone_code_hash для следующего шага
+        ctx.user_data["add_phone_code_hash"] = result.phone_code_hash
+        ctx.user_data["add_session_file"] = session_file
+        
+        await client.disconnect()
+        
+        await status_msg.edit_text(get_text(uid, "code_sent"), parse_mode="Markdown")
+        await status_msg.edit_text(get_text(uid, "enter_code"), parse_mode="Markdown")
+        return CODE
+        
     except Exception as e:
         await status_msg.edit_text(f"❌ Ошибка: {str(e)}\n\nНачните заново: /add_account")
         return ConversationHandler.END
@@ -764,16 +759,17 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
         return ConversationHandler.END
     
-    if not ctx.user_data.get("add_code_requested"):
-        await update.message.reply_text("❌ Сначала отправьте /add_account и введите все данные.\n\nНачните заново: /add_account")
+    phone = ctx.user_data.get("add_phone")
+    api_id = ctx.user_data.get("add_api_id")
+    api_hash = ctx.user_data.get("add_api_hash")
+    phone_code_hash = ctx.user_data.get("add_phone_code_hash")
+    session_file = ctx.user_data.get("add_session_file")
+    
+    if not all([phone, api_id, api_hash, phone_code_hash, session_file]):
+        await update.message.reply_text("❌ Данные не найдены. Начните заново: /add_account")
         return ConversationHandler.END
     
     status_msg = await update.message.reply_text(get_text(uid, "connecting"), parse_mode="Markdown")
-    
-    phone = ctx.user_data["add_phone"]
-    api_id = ctx.user_data["add_api_id"]
-    api_hash = ctx.user_data["add_api_hash"]
-    session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
     
     client = TelegramClient(session_file, api_id, api_hash)
     
@@ -781,11 +777,12 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await client.connect()
         
         try:
-            # Пробуем войти с кодом
-            await client.sign_in(phone=phone, code=code)
+            # Вход с кодом и phone_code_hash
+            await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
         except SessionPasswordNeededError:
+            # Если требуется 2FA
+            ctx.user_data["add_need_password"] = True
             await status_msg.edit_text(get_text(uid, "enter_2fa"), parse_mode="Markdown")
-            ctx.user_data["add_temp_client"] = session_file
             return PASSWORD
         except PhoneCodeInvalidError:
             await status_msg.edit_text("❌ Неверный код. Попробуйте ещё раз.\n\nВведите код из Telegram:")
@@ -832,12 +829,16 @@ async def add_account_password(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
         return ConversationHandler.END
     
-    status_msg = await update.message.reply_text(get_text(uid, "connecting"), parse_mode="Markdown")
+    phone = ctx.user_data.get("add_phone")
+    api_id = ctx.user_data.get("add_api_id")
+    api_hash = ctx.user_data.get("add_api_hash")
+    session_file = ctx.user_data.get("add_session_file")
     
-    phone = ctx.user_data["add_phone"]
-    api_id = ctx.user_data["add_api_id"]
-    api_hash = ctx.user_data["add_api_hash"]
-    session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
+    if not all([phone, api_id, api_hash, session_file]):
+        await update.message.reply_text("❌ Данные не найдены. Начните заново: /add_account")
+        return ConversationHandler.END
+    
+    status_msg = await update.message.reply_text(get_text(uid, "connecting"), parse_mode="Markdown")
     
     client = TelegramClient(session_file, api_id, api_hash)
     
