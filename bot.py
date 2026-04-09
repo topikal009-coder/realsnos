@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, ContextTypes, filters
+    MessageHandler, ContextTypes, filters, ConversationHandler
 )
 
 from telethon import TelegramClient
@@ -41,6 +41,9 @@ REPORTER_ACCOUNTS_FILE = "reporter_accounts.json"
 REQUIRED_CHANNEL_INVITE = "https://t.me/+vOgz5RQNSmE5OGE0"
 REQUIRED_CHANNEL_USERNAME = None
 REQUIRED_CHANNEL_ID = None
+
+# Состояния для ConversationHandler
+PHONE, API_ID, API_HASH, CODE, PASSWORD = range(5)
 
 SUBSCRIPTIONS = {
     "starter": {"reports": 5, "price": 14.99, "emoji": "🔹", "name": "Starter"},
@@ -88,9 +91,6 @@ TEXTS = {
         "user_not_found": "❌ Пользователь не найден",
         "no_access": "❌ У вас нет доступа!",
         "error": "❌ Ошибка: {}",
-        "admin_add_account": "🤖 *Добавление аккаунта-репортера*\n\nВыберите способ добавления:\n• /add_account_auto — автоматическое создание сессии\n• /add_account_manual — добавить существующую сессию",
-        "account_added": "✅ *Аккаунт добавлен!*\n\n📱 {}\n🆔 ID: {}\n📊 Лимит: 50 жалоб/день\n\nАккаунт подключен и готов к работе.",
-        "account_add_failed": "❌ *Не удалось добавить аккаунт*\n\nОшибка: {}",
         "must_subscribe": "❌ *Доступ запрещён!*\n\nДля использования бота необходимо подписаться на наш канал:\n👉 [Нажмите здесь, чтобы подписаться]({})\n\nПосле подписки нажмите /start снова.",
         "enter_phone": "📱 *Введите номер телефона*\n\nВ формате: `+380XXXXXXXXX`\n\nДля отмены введите /cancel",
         "enter_code": "📨 *Введите код подтверждения*\n\nКод отправлен в Telegram\n\nДля отмены введите /cancel",
@@ -98,7 +98,9 @@ TEXTS = {
         "enter_api_id": "🔑 *Введите API ID*\n\nПолучить можно на https://my.telegram.org/apps\n\nДля отмены введите /cancel",
         "enter_api_hash": "🔐 *Введите API Hash*\n\nПолучить можно на https://my.telegram.org/apps\n\nДля отмены введите /cancel",
         "session_created": "✅ *Сессия создана!*\n\nАккаунт {} успешно добавлен.\nID аккаунта: {}\n\nТеперь аккаунт готов к использованию.",
-        "cancel": "❌ *Действие отменено*"
+        "cancel": "❌ *Действие отменено*",
+        "sending_code": "🔄 Отправка кода подтверждения...",
+        "connecting": "🔄 Подключение к Telegram..."
     },
     "uk": {
         "welcome": "🌟 *Ласкаво просимо!* 🌟\n\n👇 *Оберіть дію:*",
@@ -137,9 +139,6 @@ TEXTS = {
         "user_not_found": "❌ Користувача не знайдено",
         "no_access": "❌ У вас немає доступу!",
         "error": "❌ Помилка: {}",
-        "admin_add_account": "🤖 *Додавання акаунта-репортера*\n\nВиберіть спосіб додавання:\n• /add_account_auto — автоматичне створення сесії\n• /add_account_manual — додати існуючу сесію",
-        "account_added": "✅ *Акаунт додано!*\n\n📱 {}\n🆔 ID: {}\n📊 Ліміт: 50 скарг/день\n\nАкаунт підключено та готовий до роботи.",
-        "account_add_failed": "❌ *Не вдалося додати акаунт*\n\nПомилка: {}",
         "must_subscribe": "❌ *Доступ заборонено!*\n\nДля використання бота необхідно підписатися на наш канал:\n👉 [Натисніть тут, щоб підписатися]({})\n\nПісля підписки натисніть /start знову.",
         "enter_phone": "📱 *Введіть номер телефону*\n\nУ форматі: `+380XXXXXXXXX`\n\nДля скасування введіть /cancel",
         "enter_code": "📨 *Введіть код підтвердження*\n\nКод надіслано в Telegram\n\nДля скасування введіть /cancel",
@@ -147,7 +146,9 @@ TEXTS = {
         "enter_api_id": "🔑 *Введіть API ID*\n\nОтримати можна на https://my.telegram.org/apps\n\nДля скасування введіть /cancel",
         "enter_api_hash": "🔐 *Введіть API Hash*\n\nОтримати можна на https://my.telegram.org/apps\n\nДля скасування введіть /cancel",
         "session_created": "✅ *Сесію створено!*\n\nАкаунт {} успішно додано.\nID акаунта: {}\n\nТепер акаунт готовий до використання.",
-        "cancel": "❌ *Дію скасовано*"
+        "cancel": "❌ *Дію скасовано*",
+        "sending_code": "🔄 Відправка коду підтвердження...",
+        "connecting": "🔄 Підключення до Telegram..."
     },
     "en": {
         "welcome": "🌟 *Welcome!* 🌟\n\n👇 *Choose an action:*",
@@ -186,9 +187,6 @@ TEXTS = {
         "user_not_found": "❌ User not found",
         "no_access": "❌ Access denied!",
         "error": "❌ Error: {}",
-        "admin_add_account": "🤖 *Add reporter account*\n\nChoose method:\n• /add_account_auto — automatic session creation\n• /add_account_manual — add existing session",
-        "account_added": "✅ *Account added!*\n\n📱 {}\n🆔 ID: {}\n📊 Limit: 50 reports/day\n\nAccount connected and ready.",
-        "account_add_failed": "❌ *Failed to add account*\n\nError: {}",
         "must_subscribe": "❌ *Access denied!*\n\nYou must subscribe to our channel to use this bot:\n👉 [Click here to subscribe]({})\n\nAfter subscribing, press /start again.",
         "enter_phone": "📱 *Enter phone number*\n\nFormat: `+380XXXXXXXXX`\n\nTo cancel, type /cancel",
         "enter_code": "📨 *Enter confirmation code*\n\nCode sent to Telegram\n\nTo cancel, type /cancel",
@@ -196,7 +194,9 @@ TEXTS = {
         "enter_api_id": "🔑 *Enter API ID*\n\nGet it at https://my.telegram.org/apps\n\nTo cancel, type /cancel",
         "enter_api_hash": "🔐 *Enter API Hash*\n\nGet it at https://my.telegram.org/apps\n\nTo cancel, type /cancel",
         "session_created": "✅ *Session created!*\n\nAccount {} successfully added.\nAccount ID: {}\n\nAccount is now ready to use.",
-        "cancel": "❌ *Action cancelled*"
+        "cancel": "❌ *Action cancelled*",
+        "sending_code": "🔄 Sending confirmation code...",
+        "connecting": "🔄 Connecting to Telegram..."
     }
 }
 
@@ -383,8 +383,7 @@ class ReporterManager:
                 "client": None
             }
     
-    async def create_account_with_session(self, phone: str, api_id: int, api_hash: str, code_callback, password_callback=None) -> tuple:
-        """Создаёт новую сессию и добавляет аккаунт"""
+    async def create_account_with_session(self, phone: str, api_id: int, api_hash: str, code: str, password: str = None) -> tuple:
         os.makedirs("sessions", exist_ok=True)
         session_file = f"sessions/acc_{phone.replace('+', '')}"
         client = TelegramClient(session_file, api_id, api_hash)
@@ -393,13 +392,10 @@ class ReporterManager:
             await client.connect()
             
             if not await client.is_user_authorized():
-                await client.send_code_request(phone)
-                code = await code_callback()
                 try:
                     await client.sign_in(phone, code)
                 except SessionPasswordNeededError:
-                    if password_callback:
-                        password = await password_callback()
+                    if password:
                         await client.sign_in(password=password)
                     else:
                         raise Exception("Требуется пароль 2FA")
@@ -431,32 +427,6 @@ class ReporterManager:
             return None, False, "Неверный код подтверждения"
         except Exception as e:
             return None, False, str(e)
-    
-    async def add_account_manual(self, phone: str, session_file: str) -> tuple:
-        """Добавляет аккаунт с существующей сессией"""
-        accounts = load_reporter_accounts()
-        next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
-        
-        new_acc = {
-            "id": next_id,
-            "phone": phone,
-            "api_id": 0,
-            "api_hash": "",
-            "session_file": session_file,
-            "proxy": None,
-            "is_active": True,
-            "reports_today": 0,
-            "max_reports_per_day": 50
-        }
-        accounts.append(new_acc)
-        save_reporter_accounts(accounts)
-        self.load_accounts()
-        
-        connected = await self.connect(next_id)
-        if connected:
-            return next_id, True, None
-        else:
-            return next_id, False, "Не удалось подключиться по сессии"
     
     async def connect(self, acc_id: int):
         acc = self.by_id.get(acc_id)
@@ -609,17 +579,6 @@ async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -
         logger.error(f"Ошибка проверки подписки: {e}")
         return True
 
-async def ensure_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    user_id = update.effective_user.id
-    if not await check_subscription(user_id, context):
-        text = get_text(user_id, "must_subscribe", REQUIRED_CHANNEL_INVITE)
-        if update.callback_query:
-            await update.callback_query.edit_message_text(text, parse_mode="Markdown", disable_web_page_preview=True)
-        else:
-            await update.message.reply_text(text, parse_mode="Markdown", disable_web_page_preview=True)
-        return False
-    return True
-
 async def main_keyboard(uid):
     btns = [
         [InlineKeyboardButton(get_text(uid, "btn_shop"), callback_data="shop")],
@@ -644,7 +603,6 @@ async def admin_keyboard(uid):
         [InlineKeyboardButton("💰 Изменить сносы", callback_data="admin_reports")],
         [InlineKeyboardButton("🎫 Выдать подписку", callback_data="admin_give")],
         [InlineKeyboardButton("📈 Статистика", callback_data="admin_stats")],
-        [InlineKeyboardButton("🤖 Добавить аккаунт (авто)", callback_data="admin_add_account_auto")],
         [InlineKeyboardButton("➕ Добавить модератора", callback_data="admin_add_mod")],
         [InlineKeyboardButton("➖ Удалить модератора", callback_data="admin_rem_mod")],
         [InlineKeyboardButton("🔚 Выйти", callback_data="admin_exit")],
@@ -674,98 +632,206 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         save_users_list(users)
     await update.message.reply_text(get_text(uid, "welcome"), parse_mode="Markdown", reply_markup=await main_keyboard(uid))
 
-async def add_account_auto_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def add_account_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if uid not in ADMIN_IDS:
         await update.message.reply_text(get_text(uid, "no_access"))
-        return
+        return ConversationHandler.END
     
-    ctx.user_data["add_account_step"] = "phone"
     await update.message.reply_text(get_text(uid, "enter_phone"), parse_mode="Markdown")
+    return PHONE
 
-async def cancel_add_account(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def add_account_phone(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    ctx.user_data.pop("add_account_step", None)
-    ctx.user_data.pop("add_account_phone", None)
-    ctx.user_data.pop("add_account_api_id", None)
-    ctx.user_data.pop("add_account_api_hash", None)
-    await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+    phone = update.message.text.strip()
+    
+    if phone == "/cancel":
+        await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+        return ConversationHandler.END
+    
+    if not phone.startswith('+') or not phone[1:].replace('+', '').isdigit():
+        await update.message.reply_text("❌ Неверный формат. Введите номер в формате +380XXXXXXXXX")
+        return PHONE
+    
+    ctx.user_data["add_phone"] = phone
+    await update.message.reply_text(get_text(uid, "enter_api_id"), parse_mode="Markdown")
+    return API_ID
 
-async def handle_add_account_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def add_account_api_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
     
     if text == "/cancel":
-        await cancel_add_account(update, ctx)
-        return
+        await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+        return ConversationHandler.END
     
-    step = ctx.user_data.get("add_account_step")
+    try:
+        api_id = int(text)
+        ctx.user_data["add_api_id"] = api_id
+        await update.message.reply_text(get_text(uid, "enter_api_hash"), parse_mode="Markdown")
+        return API_HASH
+    except ValueError:
+        await update.message.reply_text("❌ API ID должен быть числом")
+        return API_ID
+
+async def add_account_api_hash(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    api_hash = update.message.text.strip()
     
-    if step == "phone":
-        if not text.startswith('+') or not text[1:].isdigit():
-            await update.message.reply_text("❌ Неверный формат. Введите номер в формате +380XXXXXXXXX")
-            return
-        ctx.user_data["add_account_phone"] = text
-        ctx.user_data["add_account_step"] = "api_id"
-        await update.message.reply_text(get_text(uid, "enter_api_id"), parse_mode="Markdown")
+    if api_hash == "/cancel":
+        await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+        return ConversationHandler.END
     
-    elif step == "api_id":
+    ctx.user_data["add_api_hash"] = api_hash
+    ctx.user_data["add_need_password"] = False
+    
+    # Отправляем запрос кода
+    status_msg = await update.message.reply_text(get_text(uid, "sending_code"), parse_mode="Markdown")
+    
+    phone = ctx.user_data["add_phone"]
+    api_id = ctx.user_data["add_api_id"]
+    api_hash = ctx.user_data["add_api_hash"]
+    
+    # Создаём временного клиента для отправки кода
+    temp_session = f"temp_{int(time.time())}"
+    temp_client = TelegramClient(temp_session, api_id, api_hash)
+    
+    try:
+        await temp_client.connect()
+        await temp_client.send_code_request(phone)
+        await temp_client.disconnect()
+        
+        ctx.user_data["add_temp_client"] = temp_session
+        await status_msg.edit_text(get_text(uid, "enter_code"), parse_mode="Markdown")
+        return CODE
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
+        return ConversationHandler.END
+
+async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    code = update.message.text.strip()
+    
+    if code == "/cancel":
+        await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+        return ConversationHandler.END
+    
+    status_msg = await update.message.reply_text(get_text(uid, "connecting"), parse_mode="Markdown")
+    
+    phone = ctx.user_data["add_phone"]
+    api_id = ctx.user_data["add_api_id"]
+    api_hash = ctx.user_data["add_api_hash"]
+    
+    try:
+        # Пытаемся войти с кодом
+        session_file = f"sessions/acc_{phone.replace('+', '')}"
+        client = TelegramClient(session_file, api_id, api_hash)
+        await client.connect()
+        
         try:
-            api_id = int(text)
-            ctx.user_data["add_account_api_id"] = api_id
-            ctx.user_data["add_account_step"] = "api_hash"
-            await update.message.reply_text(get_text(uid, "enter_api_hash"), parse_mode="Markdown")
-        except ValueError:
-            await update.message.reply_text("❌ API ID должен быть числом")
-    
-    elif step == "api_hash":
-        ctx.user_data["add_account_api_hash"] = text
-        ctx.user_data["add_account_step"] = "code"
-        
-        phone = ctx.user_data["add_account_phone"]
-        api_id = ctx.user_data["add_account_api_id"]
-        api_hash = ctx.user_data["add_account_api_hash"]
-        
-        status_msg = await update.message.reply_text("🔄 Подключение к Telegram, отправка кода...")
-        
-        async def get_code():
-            await status_msg.edit_text(get_text(uid, "enter_code"), parse_mode="Markdown")
-            return await wait_for_code(update, ctx)
-        
-        async def get_password():
+            await client.sign_in(phone, code)
+            # Успешный вход
+            me = await client.get_me()
+            await client.disconnect()
+            
+            # Сохраняем аккаунт
+            accounts = load_reporter_accounts()
+            next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
+            
+            new_acc = {
+                "id": next_id,
+                "phone": phone,
+                "api_id": api_id,
+                "api_hash": api_hash,
+                "session_file": session_file,
+                "proxy": None,
+                "is_active": True,
+                "reports_today": 0,
+                "max_reports_per_day": 50
+            }
+            accounts.append(new_acc)
+            save_reporter_accounts(accounts)
+            reporter.load_accounts()
+            await reporter.connect(next_id)
+            
+            await status_msg.edit_text(get_text(uid, "session_created", phone, next_id), parse_mode="Markdown")
+            return ConversationHandler.END
+            
+        except SessionPasswordNeededError:
+            # Требуется 2FA
+            ctx.user_data["add_temp_client"] = client
+            ctx.user_data["add_need_password"] = True
             await status_msg.edit_text(get_text(uid, "enter_2fa"), parse_mode="Markdown")
-            return await wait_for_password(update, ctx)
-        
-        ctx.user_data["add_account_code_future"] = asyncio.Future()
-        ctx.user_data["add_account_password_future"] = asyncio.Future()
-        ctx.user_data["add_account_waiting"] = True
-        
-        acc_id, success, error = await reporter.create_account_with_session(
-            phone, api_id, api_hash, get_code, get_password
-        )
-        
-        ctx.user_data.pop("add_account_step", None)
-        ctx.user_data.pop("add_account_phone", None)
-        ctx.user_data.pop("add_account_api_id", None)
-        ctx.user_data.pop("add_account_api_hash", None)
-        ctx.user_data.pop("add_account_waiting", None)
-        
-        if success:
-            await status_msg.edit_text(get_text(uid, "session_created", phone, acc_id), parse_mode="Markdown")
-        else:
-            await status_msg.edit_text(get_text(uid, "account_add_failed", error), parse_mode="Markdown")
+            return PASSWORD
+        except PhoneCodeInvalidError:
+            await status_msg.edit_text("❌ Неверный код. Попробуйте ещё раз.")
+            return CODE
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
+            return ConversationHandler.END
+            
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
+        return ConversationHandler.END
 
-async def wait_for_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    future = asyncio.Future()
-    ctx.user_data["add_account_code_future"] = future
-    result = await future
-    return result
+async def add_account_password(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    password = update.message.text.strip()
+    
+    if password == "/cancel":
+        await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+        return ConversationHandler.END
+    
+    status_msg = await update.message.reply_text(get_text(uid, "connecting"), parse_mode="Markdown")
+    
+    phone = ctx.user_data["add_phone"]
+    api_id = ctx.user_data["add_api_id"]
+    api_hash = ctx.user_data["add_api_hash"]
+    session_file = f"sessions/acc_{phone.replace('+', '')}"
+    
+    try:
+        client = TelegramClient(session_file, api_id, api_hash)
+        await client.connect()
+        
+        try:
+            await client.sign_in(password=password)
+            me = await client.get_me()
+            await client.disconnect()
+            
+            accounts = load_reporter_accounts()
+            next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
+            
+            new_acc = {
+                "id": next_id,
+                "phone": phone,
+                "api_id": api_id,
+                "api_hash": api_hash,
+                "session_file": session_file,
+                "proxy": None,
+                "is_active": True,
+                "reports_today": 0,
+                "max_reports_per_day": 50
+            }
+            accounts.append(new_acc)
+            save_reporter_accounts(accounts)
+            reporter.load_accounts()
+            await reporter.connect(next_id)
+            
+            await status_msg.edit_text(get_text(uid, "session_created", phone, next_id), parse_mode="Markdown")
+            return ConversationHandler.END
+            
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
+            return ConversationHandler.END
+            
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
+        return ConversationHandler.END
 
-async def wait_for_password(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    future = asyncio.Future()
-    ctx.user_data["add_account_password_future"] = future
-    result = await future
-    return result
+async def cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+    return ConversationHandler.END
 
 async def callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -902,13 +968,6 @@ async def callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not is_admin_or_mod(uid): return
         ctx.user_data["admin_giving_sub"] = True
         await query.edit_message_text("🎫 *Выдача подписки*\n\nВведите ID пользователя:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]]))
-        return
-    if data == "admin_add_account_auto":
-        if uid not in ADMIN_IDS:
-            await query.answer("Только администратор", show_alert=True)
-            return
-        await query.edit_message_text(get_text(uid, "enter_phone"), parse_mode="Markdown")
-        ctx.user_data["add_account_step"] = "phone"
         return
     if data == "admin_add_mod":
         if uid not in ADMIN_IDS:
@@ -1068,21 +1127,6 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("❌ Введите ID")
         return
-    
-    if ctx.user_data.get("add_account_waiting"):
-        if "add_account_code_future" in ctx.user_data and not ctx.user_data["add_account_code_future"].done():
-            ctx.user_data["add_account_code_future"].set_result(text)
-            ctx.user_data.pop("add_account_waiting", None)
-            return
-        if "add_account_password_future" in ctx.user_data and not ctx.user_data["add_account_password_future"].done():
-            ctx.user_data["add_account_password_future"].set_result(text)
-            ctx.user_data.pop("add_account_waiting", None)
-            return
-    
-    if ctx.user_data.get("add_account_step"):
-        await handle_add_account_input(update, ctx)
-        return
-    
     if ctx.user_data.get("admin_add_mod"):
         try:
             mid = int(text)
@@ -1145,9 +1189,22 @@ async def run():
     logger.info(f"Подключено {len(reporter.clients)} аккаунтов")
     
     app = Application.builder().token(BOT_TOKEN).build()
+    
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("add_account", add_account_start)],
+        states={
+            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_account_phone)],
+            API_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_account_api_id)],
+            API_HASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_account_api_hash)],
+            CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_account_code)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_account_password)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("add_account_auto", add_account_auto_start))
-    app.add_handler(CommandHandler("cancel", cancel_add_account))
+    app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
