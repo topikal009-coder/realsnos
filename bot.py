@@ -19,7 +19,7 @@ from telethon import TelegramClient
 from telethon.tl.functions.account import ReportPeerRequest
 from telethon.tl.functions.contacts import AddContactRequest
 from telethon.tl.types import InputReportReasonSpam, InputPhoneContact
-from telethon.errors import FloodWaitError, PeerFloodError
+from telethon.errors import FloodWaitError, PeerFloodError, SessionPasswordNeededError, PhoneCodeInvalidError
 
 import aiohttp
 
@@ -29,7 +29,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ==================== КОНФИГУРАЦИЯ ====================
 BOT_TOKEN = "8740017892:AAF2DDdjZvOiCjug7XvMUyIoO76YSmP-JSE"
 CRYPTO_PAY_TOKEN = "563714:AAoNQWxKCzZLDkotn5jjJdl0QFwMCAtEbtD"
 CRYPTO_PAY_TESTNET = False
@@ -39,12 +38,9 @@ MODERATORS_FILE = "moderators.json"
 USERS_FILE = "users_list.json"
 REPORTER_ACCOUNTS_FILE = "reporter_accounts.json"
 
-# КАНАЛ ДЛЯ ПРОВЕРКИ ПОДПИСКИ (укажите invite link или username)
-REQUIRED_CHANNEL_INVITE = "https://t.me/+vOgz5RQNSmE5OGE0"  # ссылка-приглашение
-# Для работы проверки бот должен быть АДМИНИСТРАТОРОМ этого канала (для приватных)
-# Либо укажите публичный username: "название_канала" (без @)
-
-REQUIRED_CHANNEL_USERNAME = None  # если есть публичный username, укажите без @
+REQUIRED_CHANNEL_INVITE = "https://t.me/+vOgz5RQNSmE5OGE0"
+REQUIRED_CHANNEL_USERNAME = None
+REQUIRED_CHANNEL_ID = None
 
 SUBSCRIPTIONS = {
     "starter": {"reports": 5, "price": 14.99, "emoji": "🔹", "name": "Starter"},
@@ -92,10 +88,17 @@ TEXTS = {
         "user_not_found": "❌ Пользователь не найден",
         "no_access": "❌ У вас нет доступа!",
         "error": "❌ Ошибка: {}",
-        "admin_add_account": "🤖 *Добавление аккаунта-репортера*\n\nВведите данные в формате:\n`номер_телефона api_id api_hash`\n\nПример:\n`+1234567890 1234567 a1b2c3d4e5f6...`\n\nАккаунт будет автоматически подключен.",
+        "admin_add_account": "🤖 *Добавление аккаунта-репортера*\n\nВыберите способ добавления:\n• /add_account_auto — автоматическое создание сессии\n• /add_account_manual — добавить существующую сессию",
         "account_added": "✅ *Аккаунт добавлен!*\n\n📱 {}\n🆔 ID: {}\n📊 Лимит: 50 жалоб/день\n\nАккаунт подключен и готов к работе.",
         "account_add_failed": "❌ *Не удалось добавить аккаунт*\n\nОшибка: {}",
-        "must_subscribe": "❌ *Доступ запрещён!*\n\nДля использования бота необходимо подписаться на наш канал:\n👉 [Нажмите здесь, чтобы подписаться]({})\n\nПосле подписки нажмите /start снова."
+        "must_subscribe": "❌ *Доступ запрещён!*\n\nДля использования бота необходимо подписаться на наш канал:\n👉 [Нажмите здесь, чтобы подписаться]({})\n\nПосле подписки нажмите /start снова.",
+        "enter_phone": "📱 *Введите номер телефона*\n\nВ формате: `+380XXXXXXXXX`\n\nДля отмены введите /cancel",
+        "enter_code": "📨 *Введите код подтверждения*\n\nКод отправлен в Telegram\n\nДля отмены введите /cancel",
+        "enter_2fa": "🔐 *Введите пароль двухфакторной аутентификации*\n\nДля отмены введите /cancel",
+        "enter_api_id": "🔑 *Введите API ID*\n\nПолучить можно на https://my.telegram.org/apps\n\nДля отмены введите /cancel",
+        "enter_api_hash": "🔐 *Введите API Hash*\n\nПолучить можно на https://my.telegram.org/apps\n\nДля отмены введите /cancel",
+        "session_created": "✅ *Сессия создана!*\n\nАккаунт {} успешно добавлен.\nID аккаунта: {}\n\nТеперь аккаунт готов к использованию.",
+        "cancel": "❌ *Действие отменено*"
     },
     "uk": {
         "welcome": "🌟 *Ласкаво просимо!* 🌟\n\n👇 *Оберіть дію:*",
@@ -134,10 +137,17 @@ TEXTS = {
         "user_not_found": "❌ Користувача не знайдено",
         "no_access": "❌ У вас немає доступу!",
         "error": "❌ Помилка: {}",
-        "admin_add_account": "🤖 *Додавання акаунта-репортера*\n\nВведіть дані у форматі:\n`номер_телефону api_id api_hash`\n\nПриклад:\n`+1234567890 1234567 a1b2c3d4e5f6...`\n\nАкаунт буде автоматично підключено.",
+        "admin_add_account": "🤖 *Додавання акаунта-репортера*\n\nВиберіть спосіб додавання:\n• /add_account_auto — автоматичне створення сесії\n• /add_account_manual — додати існуючу сесію",
         "account_added": "✅ *Акаунт додано!*\n\n📱 {}\n🆔 ID: {}\n📊 Ліміт: 50 скарг/день\n\nАкаунт підключено та готовий до роботи.",
         "account_add_failed": "❌ *Не вдалося додати акаунт*\n\nПомилка: {}",
-        "must_subscribe": "❌ *Доступ заборонено!*\n\nДля використання бота необхідно підписатися на наш канал:\n👉 [Натисніть тут, щоб підписатися]({})\n\nПісля підписки натисніть /start знову."
+        "must_subscribe": "❌ *Доступ заборонено!*\n\nДля використання бота необхідно підписатися на наш канал:\n👉 [Натисніть тут, щоб підписатися]({})\n\nПісля підписки натисніть /start знову.",
+        "enter_phone": "📱 *Введіть номер телефону*\n\nУ форматі: `+380XXXXXXXXX`\n\nДля скасування введіть /cancel",
+        "enter_code": "📨 *Введіть код підтвердження*\n\nКод надіслано в Telegram\n\nДля скасування введіть /cancel",
+        "enter_2fa": "🔐 *Введіть пароль двофакторної аутентифікації*\n\nДля скасування введіть /cancel",
+        "enter_api_id": "🔑 *Введіть API ID*\n\nОтримати можна на https://my.telegram.org/apps\n\nДля скасування введіть /cancel",
+        "enter_api_hash": "🔐 *Введіть API Hash*\n\nОтримати можна на https://my.telegram.org/apps\n\nДля скасування введіть /cancel",
+        "session_created": "✅ *Сесію створено!*\n\nАкаунт {} успішно додано.\nID акаунта: {}\n\nТепер акаунт готовий до використання.",
+        "cancel": "❌ *Дію скасовано*"
     },
     "en": {
         "welcome": "🌟 *Welcome!* 🌟\n\n👇 *Choose an action:*",
@@ -176,10 +186,17 @@ TEXTS = {
         "user_not_found": "❌ User not found",
         "no_access": "❌ Access denied!",
         "error": "❌ Error: {}",
-        "admin_add_account": "🤖 *Add reporter account*\n\nEnter data in format:\n`phone_number api_id api_hash`\n\nExample:\n`+1234567890 1234567 a1b2c3d4e5f6...`\n\nThe account will be connected automatically.",
+        "admin_add_account": "🤖 *Add reporter account*\n\nChoose method:\n• /add_account_auto — automatic session creation\n• /add_account_manual — add existing session",
         "account_added": "✅ *Account added!*\n\n📱 {}\n🆔 ID: {}\n📊 Limit: 50 reports/day\n\nAccount connected and ready.",
         "account_add_failed": "❌ *Failed to add account*\n\nError: {}",
-        "must_subscribe": "❌ *Access denied!*\n\nYou must subscribe to our channel to use this bot:\n👉 [Click here to subscribe]({})\n\nAfter subscribing, press /start again."
+        "must_subscribe": "❌ *Access denied!*\n\nYou must subscribe to our channel to use this bot:\n👉 [Click here to subscribe]({})\n\nAfter subscribing, press /start again.",
+        "enter_phone": "📱 *Enter phone number*\n\nFormat: `+380XXXXXXXXX`\n\nTo cancel, type /cancel",
+        "enter_code": "📨 *Enter confirmation code*\n\nCode sent to Telegram\n\nTo cancel, type /cancel",
+        "enter_2fa": "🔐 *Enter 2FA password*\n\nTo cancel, type /cancel",
+        "enter_api_id": "🔑 *Enter API ID*\n\nGet it at https://my.telegram.org/apps\n\nTo cancel, type /cancel",
+        "enter_api_hash": "🔐 *Enter API Hash*\n\nGet it at https://my.telegram.org/apps\n\nTo cancel, type /cancel",
+        "session_created": "✅ *Session created!*\n\nAccount {} successfully added.\nAccount ID: {}\n\nAccount is now ready to use.",
+        "cancel": "❌ *Action cancelled*"
     }
 }
 
@@ -366,15 +383,66 @@ class ReporterManager:
                 "client": None
             }
     
-    async def add_account(self, phone: str, api_id: int, api_hash: str) -> tuple:
+    async def create_account_with_session(self, phone: str, api_id: int, api_hash: str, code_callback, password_callback=None) -> tuple:
+        """Создаёт новую сессию и добавляет аккаунт"""
+        os.makedirs("sessions", exist_ok=True)
+        session_file = f"sessions/acc_{phone.replace('+', '')}"
+        client = TelegramClient(session_file, api_id, api_hash)
+        
+        try:
+            await client.connect()
+            
+            if not await client.is_user_authorized():
+                await client.send_code_request(phone)
+                code = await code_callback()
+                try:
+                    await client.sign_in(phone, code)
+                except SessionPasswordNeededError:
+                    if password_callback:
+                        password = await password_callback()
+                        await client.sign_in(password=password)
+                    else:
+                        raise Exception("Требуется пароль 2FA")
+            
+            me = await client.get_me()
+            await client.disconnect()
+            
+            accounts = load_reporter_accounts()
+            next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
+            
+            new_acc = {
+                "id": next_id,
+                "phone": phone,
+                "api_id": api_id,
+                "api_hash": api_hash,
+                "session_file": session_file,
+                "proxy": None,
+                "is_active": True,
+                "reports_today": 0,
+                "max_reports_per_day": 50
+            }
+            accounts.append(new_acc)
+            save_reporter_accounts(accounts)
+            self.load_accounts()
+            
+            await self.connect(next_id)
+            return next_id, True, None
+        except PhoneCodeInvalidError:
+            return None, False, "Неверный код подтверждения"
+        except Exception as e:
+            return None, False, str(e)
+    
+    async def add_account_manual(self, phone: str, session_file: str) -> tuple:
+        """Добавляет аккаунт с существующей сессией"""
         accounts = load_reporter_accounts()
         next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
+        
         new_acc = {
             "id": next_id,
             "phone": phone,
-            "api_id": api_id,
-            "api_hash": api_hash,
-            "session_file": f"sessions/acc_{phone.replace('+', '')}.session",
+            "api_id": 0,
+            "api_hash": "",
+            "session_file": session_file,
             "proxy": None,
             "is_active": True,
             "reports_today": 0,
@@ -383,11 +451,12 @@ class ReporterManager:
         accounts.append(new_acc)
         save_reporter_accounts(accounts)
         self.load_accounts()
+        
         connected = await self.connect(next_id)
         if connected:
             return next_id, True, None
         else:
-            return next_id, False, "Не удалось подключиться"
+            return next_id, False, "Не удалось подключиться по сессии"
     
     async def connect(self, acc_id: int):
         acc = self.by_id.get(acc_id)
@@ -395,7 +464,7 @@ class ReporterManager:
         os.makedirs("sessions", exist_ok=True)
         cl = TelegramClient(acc["session_file"], acc["api_id"], acc["api_hash"], proxy=acc.get("proxy"))
         try:
-            await cl.start(phone=acc["phone"])
+            await cl.start()
             self.clients[acc_id] = cl
             self.status[acc_id]["client"] = cl
             self.status[acc_id]["is_connected"] = True
@@ -526,46 +595,21 @@ def extract_username(txt):
 def valid_username(u):
     return u and 3 <= len(u) <= 32 and not re.search(r'[\s<>{}[\]\\]', u)
 
-# ==================== ПРОВЕРКА ПОДПИСКИ ====================
 async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Проверяет, подписан ли пользователь на обязательный канал"""
     try:
-        # Получаем объект канала (через invite link или username)
         if REQUIRED_CHANNEL_USERNAME:
             channel = await context.bot.get_chat(f"@{REQUIRED_CHANNEL_USERNAME}")
+        elif REQUIRED_CHANNEL_ID:
+            channel = await context.bot.get_chat(REQUIRED_CHANNEL_ID)
         else:
-            # Для приватного канала нужно, чтобы бот был его участником
-            # Используем invite link – можно получить chat_id через getChat
-            # Но проще заранее получить chat_id и вписать сюда
-            # Временно используем прямой вызов с invite link (не все методы работают)
-            # Для надёжности лучше вручную получить chat_id канала и вставить сюда
-            # Например: REQUIRED_CHANNEL_ID = -1001234567890
-            # Сейчас сделаем заглушку: предполагаем, что REQUIRED_CHANNEL_USERNAME задан
-            logger.error("Не задан REQUIRED_CHANNEL_USERNAME. Проверка подписки отключена.")
             return True
         member = await context.bot.get_chat_member(chat_id=channel.id, user_id=user_id)
         return member.status in ['member', 'administrator', 'creator']
     except Exception as e:
         logger.error(f"Ошибка проверки подписки: {e}")
-        # Если проверка не удалась (бот не админ канала), пропускаем проверку
         return True
 
-# ВНИМАНИЕ: Для работы проверки подписки на ПРИВАТНЫЙ канал:
-# 1. Добавьте бота в администраторы канала.
-# 2. Получите числовой ID канала (например, через @userinfobot) и вставьте сюда:
-# REQUIRED_CHANNEL_ID = -1001234567890
-# 3. Закомментируйте REQUIRED_CHANNEL_INVITE и REQUIRED_CHANNEL_USERNAME.
-
-# Для публичного канала укажите username (без @) в REQUIRED_CHANNEL_USERNAME.
-
-# Пример для вашего канала (приватный): получите ID и укажите его.
-# Пока оставим заглушку – проверка будет пропущена.
-# Рекомендую создать публичный канал или получить ID приватного.
-REQUIRED_CHANNEL_ID = None  # Впишите сюда ID канала (например, -1001234567890)
-REQUIRED_CHANNEL_USERNAME = None  # Если публичный, укажите username (без @)
-
 async def ensure_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Если не подписан – отправляет сообщение и возвращает False"""
     user_id = update.effective_user.id
     if not await check_subscription(user_id, context):
         text = get_text(user_id, "must_subscribe", REQUIRED_CHANNEL_INVITE)
@@ -576,7 +620,6 @@ async def ensure_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
         return False
     return True
 
-# ==================== КЛАВИАТУРЫ ====================
 async def main_keyboard(uid):
     btns = [
         [InlineKeyboardButton(get_text(uid, "btn_shop"), callback_data="shop")],
@@ -601,7 +644,7 @@ async def admin_keyboard(uid):
         [InlineKeyboardButton("💰 Изменить сносы", callback_data="admin_reports")],
         [InlineKeyboardButton("🎫 Выдать подписку", callback_data="admin_give")],
         [InlineKeyboardButton("📈 Статистика", callback_data="admin_stats")],
-        [InlineKeyboardButton("🤖 Добавить аккаунт", callback_data="admin_add_account")],
+        [InlineKeyboardButton("🤖 Добавить аккаунт (авто)", callback_data="admin_add_account_auto")],
         [InlineKeyboardButton("➕ Добавить модератора", callback_data="admin_add_mod")],
         [InlineKeyboardButton("➖ Удалить модератора", callback_data="admin_rem_mod")],
         [InlineKeyboardButton("🔚 Выйти", callback_data="admin_exit")],
@@ -617,10 +660,8 @@ async def lang_keyboard(uid):
         [InlineKeyboardButton(get_text(uid, "btn_back"), callback_data="main")]
     ])
 
-# ==================== ОСНОВНЫЕ ОБРАБОТЧИКИ ====================
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    # Проверка подписки
     if not await check_subscription(uid, ctx):
         text = get_text(uid, "must_subscribe", REQUIRED_CHANNEL_INVITE)
         await update.message.reply_text(text, parse_mode="Markdown", disable_web_page_preview=True)
@@ -633,13 +674,105 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         save_users_list(users)
     await update.message.reply_text(get_text(uid, "welcome"), parse_mode="Markdown", reply_markup=await main_keyboard(uid))
 
+async def add_account_auto_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text(get_text(uid, "no_access"))
+        return
+    
+    ctx.user_data["add_account_step"] = "phone"
+    await update.message.reply_text(get_text(uid, "enter_phone"), parse_mode="Markdown")
+
+async def cancel_add_account(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    ctx.user_data.pop("add_account_step", None)
+    ctx.user_data.pop("add_account_phone", None)
+    ctx.user_data.pop("add_account_api_id", None)
+    ctx.user_data.pop("add_account_api_hash", None)
+    await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+
+async def handle_add_account_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    text = update.message.text.strip()
+    
+    if text == "/cancel":
+        await cancel_add_account(update, ctx)
+        return
+    
+    step = ctx.user_data.get("add_account_step")
+    
+    if step == "phone":
+        if not text.startswith('+') or not text[1:].isdigit():
+            await update.message.reply_text("❌ Неверный формат. Введите номер в формате +380XXXXXXXXX")
+            return
+        ctx.user_data["add_account_phone"] = text
+        ctx.user_data["add_account_step"] = "api_id"
+        await update.message.reply_text(get_text(uid, "enter_api_id"), parse_mode="Markdown")
+    
+    elif step == "api_id":
+        try:
+            api_id = int(text)
+            ctx.user_data["add_account_api_id"] = api_id
+            ctx.user_data["add_account_step"] = "api_hash"
+            await update.message.reply_text(get_text(uid, "enter_api_hash"), parse_mode="Markdown")
+        except ValueError:
+            await update.message.reply_text("❌ API ID должен быть числом")
+    
+    elif step == "api_hash":
+        ctx.user_data["add_account_api_hash"] = text
+        ctx.user_data["add_account_step"] = "code"
+        
+        phone = ctx.user_data["add_account_phone"]
+        api_id = ctx.user_data["add_account_api_id"]
+        api_hash = ctx.user_data["add_account_api_hash"]
+        
+        status_msg = await update.message.reply_text("🔄 Подключение к Telegram, отправка кода...")
+        
+        async def get_code():
+            await status_msg.edit_text(get_text(uid, "enter_code"), parse_mode="Markdown")
+            return await wait_for_code(update, ctx)
+        
+        async def get_password():
+            await status_msg.edit_text(get_text(uid, "enter_2fa"), parse_mode="Markdown")
+            return await wait_for_password(update, ctx)
+        
+        ctx.user_data["add_account_code_future"] = asyncio.Future()
+        ctx.user_data["add_account_password_future"] = asyncio.Future()
+        ctx.user_data["add_account_waiting"] = True
+        
+        acc_id, success, error = await reporter.create_account_with_session(
+            phone, api_id, api_hash, get_code, get_password
+        )
+        
+        ctx.user_data.pop("add_account_step", None)
+        ctx.user_data.pop("add_account_phone", None)
+        ctx.user_data.pop("add_account_api_id", None)
+        ctx.user_data.pop("add_account_api_hash", None)
+        ctx.user_data.pop("add_account_waiting", None)
+        
+        if success:
+            await status_msg.edit_text(get_text(uid, "session_created", phone, acc_id), parse_mode="Markdown")
+        else:
+            await status_msg.edit_text(get_text(uid, "account_add_failed", error), parse_mode="Markdown")
+
+async def wait_for_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    future = asyncio.Future()
+    ctx.user_data["add_account_code_future"] = future
+    result = await future
+    return result
+
+async def wait_for_password(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    future = asyncio.Future()
+    ctx.user_data["add_account_password_future"] = future
+    result = await future
+    return result
+
 async def callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
     data = query.data
     
-    # Проверка подписки для всех действий, кроме языковых и админских (админам можно без подписки)
     if data not in ["lang", "lang_ru", "lang_uk", "lang_en"] and not is_admin_or_mod(uid):
         if not await check_subscription(uid, ctx):
             text = get_text(uid, "must_subscribe", REQUIRED_CHANNEL_INVITE)
@@ -770,12 +903,12 @@ async def callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data["admin_giving_sub"] = True
         await query.edit_message_text("🎫 *Выдача подписки*\n\nВведите ID пользователя:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]]))
         return
-    if data == "admin_add_account":
+    if data == "admin_add_account_auto":
         if uid not in ADMIN_IDS:
             await query.answer("Только администратор", show_alert=True)
             return
-        ctx.user_data["admin_adding_account"] = True
-        await query.edit_message_text(get_text(uid, "admin_add_account"), parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]]))
+        await query.edit_message_text(get_text(uid, "enter_phone"), parse_mode="Markdown")
+        ctx.user_data["add_account_step"] = "phone"
         return
     if data == "admin_add_mod":
         if uid not in ADMIN_IDS:
@@ -886,7 +1019,6 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
     
-    # Проверка подписки для обычных сообщений (кроме команд)
     if not is_admin_or_mod(uid) and not await check_subscription(uid, ctx):
         await update.message.reply_text(get_text(uid, "must_subscribe", REQUIRED_CHANNEL_INVITE), parse_mode="Markdown", disable_web_page_preview=True)
         return
@@ -936,28 +1068,21 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("❌ Введите ID")
         return
-    if ctx.user_data.get("admin_adding_account"):
-        if uid not in ADMIN_IDS:
-            await update.message.reply_text("❌ Доступ запрещён")
-            ctx.user_data.pop("admin_adding_account", None)
+    
+    if ctx.user_data.get("add_account_waiting"):
+        if "add_account_code_future" in ctx.user_data and not ctx.user_data["add_account_code_future"].done():
+            ctx.user_data["add_account_code_future"].set_result(text)
+            ctx.user_data.pop("add_account_waiting", None)
             return
-        parts = text.split()
-        if len(parts) != 3:
-            await update.message.reply_text("❌ Неверный формат. Нужно: `номер api_id api_hash`", parse_mode="Markdown")
+        if "add_account_password_future" in ctx.user_data and not ctx.user_data["add_account_password_future"].done():
+            ctx.user_data["add_account_password_future"].set_result(text)
+            ctx.user_data.pop("add_account_waiting", None)
             return
-        phone, api_id_str, api_hash = parts[0], parts[1], parts[2]
-        try:
-            api_id = int(api_id_str)
-        except:
-            await update.message.reply_text("❌ API ID должен быть числом")
-            return
-        acc_id, success, error = await reporter.add_account(phone, api_id, api_hash)
-        if success:
-            await update.message.reply_text(get_text(uid, "account_added", phone, acc_id), parse_mode="Markdown")
-        else:
-            await update.message.reply_text(get_text(uid, "account_add_failed", error), parse_mode="Markdown")
-        ctx.user_data.pop("admin_adding_account", None)
+    
+    if ctx.user_data.get("add_account_step"):
+        await handle_add_account_input(update, ctx)
         return
+    
     if ctx.user_data.get("admin_add_mod"):
         try:
             mid = int(text)
@@ -1021,6 +1146,8 @@ async def run():
     
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("add_account_auto", add_account_auto_start))
+    app.add_handler(CommandHandler("cancel", cancel_add_account))
     app.add_handler(CallbackQueryHandler(callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
