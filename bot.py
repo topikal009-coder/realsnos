@@ -19,7 +19,7 @@ from telethon import TelegramClient
 from telethon.tl.functions.account import ReportPeerRequest
 from telethon.tl.functions.contacts import AddContactRequest
 from telethon.tl.types import InputReportReasonSpam, InputPhoneContact
-from telethon.errors import FloodWaitError, PeerFloodError, SessionPasswordNeededError, PhoneCodeInvalidError
+from telethon.errors import FloodWaitError, PeerFloodError, SessionPasswordNeededError, PhoneCodeInvalidError, PhoneCodeExpiredError, PhoneNumberInvalidError
 
 import aiohttp
 
@@ -29,44 +29,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ==================== НАСТРОЙКИ ПУТЕЙ ДЛЯ ФАЙЛОВ ====================
-# Определяем директорию для хранения данных
-# На Railway используем /data (Persistent Volume) или /app/data
-# Локально используем текущую папку
-
+# ==================== НАСТРОЙКИ ПУТЕЙ ====================
 def get_data_dir():
-    """Определяет правильную директорию для хранения данных"""
-    # Проверяем переменную окружения Railway
     railway_volume = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "")
     if railway_volume and os.path.exists(railway_volume) and os.access(railway_volume, os.W_OK):
         return railway_volume
-    
-    # Проверяем стандартные пути для Volume
     for path in ["/data", "/app/data"]:
         if os.path.exists(path) and os.access(path, os.W_OK):
             return path
-    
-    # Создаём папку data в текущей директории
     local_data = os.path.join(os.getcwd(), "data")
     os.makedirs(local_data, exist_ok=True)
     return local_data
 
 DATA_DIR = get_data_dir()
 SESSIONS_DIR = os.path.join(DATA_DIR, "sessions")
-
-# Создаём необходимые директории
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 
-# Пути к файлам
 DB_PATH = os.path.join(DATA_DIR, "users.db")
 MODERATORS_FILE = os.path.join(DATA_DIR, "moderators.json")
 USERS_FILE = os.path.join(DATA_DIR, "users_list.json")
 REPORTER_ACCOUNTS_FILE = os.path.join(DATA_DIR, "reporter_accounts.json")
 
 logger.info(f"📁 Директория данных: {DATA_DIR}")
-logger.info(f"📁 Директория сессий: {SESSIONS_DIR}")
-logger.info(f"📄 База данных: {DB_PATH}")
 
 # ==================== КОНФИГУРАЦИЯ ====================
 BOT_TOKEN = "8740017892:AAF2DDdjZvOiCjug7XvMUyIoO76YSmP-JSE"
@@ -79,7 +64,6 @@ REQUIRED_CHANNEL_INVITE = "https://t.me/+vOgz5RQNSmE5OGE0"
 REQUIRED_CHANNEL_USERNAME = None
 REQUIRED_CHANNEL_ID = None
 
-# Состояния для ConversationHandler
 PHONE, API_ID, API_HASH, CODE, PASSWORD = range(5)
 
 SUBSCRIPTIONS = {
@@ -130,10 +114,10 @@ TEXTS = {
         "error": "❌ Ошибка: {}",
         "must_subscribe": "❌ *Доступ запрещён!*\n\nДля использования бота необходимо подписаться на наш канал:\n👉 [Нажмите здесь, чтобы подписаться]({})\n\nПосле подписки нажмите /start снова.",
         "enter_phone": "📱 *Введите номер телефона*\n\nВ формате: `+380XXXXXXXXX`\n\nДля отмены введите /cancel",
-        "enter_code": "📨 *Введите код подтверждения*\n\nКод отправлен в Telegram\n\nДля отмены введите /cancel",
-        "enter_2fa": "🔐 *Введите пароль двухфакторной аутентификации*\n\nДля отмены введите /cancel",
         "enter_api_id": "🔑 *Введите API ID*\n\nПолучить можно на https://my.telegram.org/apps\n\nДля отмены введите /cancel",
         "enter_api_hash": "🔐 *Введите API Hash*\n\nПолучить можно на https://my.telegram.org/apps\n\nДля отмены введите /cancel",
+        "enter_code": "📨 *Введите код подтверждения*\n\nКод отправлен в Telegram\n\nДля отмены введите /cancel",
+        "enter_2fa": "🔐 *Введите пароль двухфакторной аутентификации*\n\nДля отмены введите /cancel",
         "session_created": "✅ *Сессия создана!*\n\nАккаунт {} успешно добавлен.\nID аккаунта: {}\n\nТеперь аккаунт готов к использованию.",
         "cancel": "❌ *Действие отменено*",
         "sending_code": "🔄 Отправка кода подтверждения...",
@@ -178,10 +162,10 @@ TEXTS = {
         "error": "❌ Помилка: {}",
         "must_subscribe": "❌ *Доступ заборонено!*\n\nДля використання бота необхідно підписатися на наш канал:\n👉 [Натисніть тут, щоб підписатися]({})\n\nПісля підписки натисніть /start знову.",
         "enter_phone": "📱 *Введіть номер телефону*\n\nУ форматі: `+380XXXXXXXXX`\n\nДля скасування введіть /cancel",
-        "enter_code": "📨 *Введіть код підтвердження*\n\nКод надіслано в Telegram\n\nДля скасування введіть /cancel",
-        "enter_2fa": "🔐 *Введіть пароль двофакторної аутентифікації*\n\nДля скасування введіть /cancel",
         "enter_api_id": "🔑 *Введіть API ID*\n\nОтримати можна на https://my.telegram.org/apps\n\nДля скасування введіть /cancel",
         "enter_api_hash": "🔐 *Введіть API Hash*\n\nОтримати можна на https://my.telegram.org/apps\n\nДля скасування введіть /cancel",
+        "enter_code": "📨 *Введіть код підтвердження*\n\nКод надіслано в Telegram\n\nДля скасування введіть /cancel",
+        "enter_2fa": "🔐 *Введіть пароль двофакторної аутентифікації*\n\nДля скасування введіть /cancel",
         "session_created": "✅ *Сесію створено!*\n\nАкаунт {} успішно додано.\nID акаунта: {}\n\nТепер акаунт готовий до використання.",
         "cancel": "❌ *Дію скасовано*",
         "sending_code": "🔄 Відправка коду підтвердження...",
@@ -226,10 +210,10 @@ TEXTS = {
         "error": "❌ Error: {}",
         "must_subscribe": "❌ *Access denied!*\n\nYou must subscribe to our channel to use this bot:\n👉 [Click here to subscribe]({})\n\nAfter subscribing, press /start again.",
         "enter_phone": "📱 *Enter phone number*\n\nFormat: `+380XXXXXXXXX`\n\nTo cancel, type /cancel",
-        "enter_code": "📨 *Enter confirmation code*\n\nCode sent to Telegram\n\nTo cancel, type /cancel",
-        "enter_2fa": "🔐 *Enter 2FA password*\n\nTo cancel, type /cancel",
         "enter_api_id": "🔑 *Enter API ID*\n\nGet it at https://my.telegram.org/apps\n\nTo cancel, type /cancel",
         "enter_api_hash": "🔐 *Enter API Hash*\n\nGet it at https://my.telegram.org/apps\n\nTo cancel, type /cancel",
+        "enter_code": "📨 *Enter confirmation code*\n\nCode sent to Telegram\n\nTo cancel, type /cancel",
+        "enter_2fa": "🔐 *Enter 2FA password*\n\nTo cancel, type /cancel",
         "session_created": "✅ *Session created!*\n\nAccount {} successfully added.\nAccount ID: {}\n\nAccount is now ready to use.",
         "cancel": "❌ *Action cancelled*",
         "sending_code": "🔄 Sending confirmation code...",
@@ -436,51 +420,6 @@ class ReporterManager:
                 "max_reports": a.get("max_reports_per_day", 50),
                 "client": None
             }
-    
-    async def create_account_with_session(self, phone: str, api_id: int, api_hash: str, code: str, password: str = None) -> tuple:
-        os.makedirs(SESSIONS_DIR, exist_ok=True)
-        session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
-        client = TelegramClient(session_file, api_id, api_hash)
-        
-        try:
-            await client.connect()
-            
-            if not await client.is_user_authorized():
-                try:
-                    await client.sign_in(phone, code)
-                except SessionPasswordNeededError:
-                    if password:
-                        await client.sign_in(password=password)
-                    else:
-                        raise Exception("Требуется пароль 2FA")
-            
-            me = await client.get_me()
-            await client.disconnect()
-            
-            accounts = load_reporter_accounts()
-            next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
-            
-            new_acc = {
-                "id": next_id,
-                "phone": phone,
-                "api_id": api_id,
-                "api_hash": api_hash,
-                "session_file": session_file,
-                "proxy": None,
-                "is_active": True,
-                "reports_today": 0,
-                "max_reports_per_day": 50
-            }
-            accounts.append(new_acc)
-            save_reporter_accounts(accounts)
-            self.load_accounts()
-            
-            await self.connect(next_id)
-            return next_id, True, None
-        except PhoneCodeInvalidError:
-            return None, False, "Неверный код подтверждения"
-        except Exception as e:
-            return None, False, str(e)
     
     async def connect(self, acc_id: int):
         acc = self.by_id.get(acc_id)
@@ -749,13 +688,18 @@ async def add_account_api_hash(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     try:
         await temp_client.connect()
-        await temp_client.send_code_request(phone)
+        result = await temp_client.send_code_request(phone)
+        ctx.user_data["add_phone_code_hash"] = result.phone_code_hash
         await temp_client.disconnect()
         
-        os.remove(temp_session + ".session") if os.path.exists(temp_session + ".session") else None
+        if os.path.exists(temp_session + ".session"):
+            os.remove(temp_session + ".session")
         
         await status_msg.edit_text(get_text(uid, "enter_code"), parse_mode="Markdown")
         return CODE
+    except PhoneNumberInvalidError:
+        await status_msg.edit_text("❌ Неверный номер телефона")
+        return ConversationHandler.END
     except Exception as e:
         await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
         return ConversationHandler.END
@@ -773,6 +717,7 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     phone = ctx.user_data["add_phone"]
     api_id = ctx.user_data["add_api_id"]
     api_hash = ctx.user_data["add_api_hash"]
+    phone_code_hash = ctx.user_data.get("add_phone_code_hash")
     session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
     
     client = TelegramClient(session_file, api_id, api_hash)
@@ -781,7 +726,7 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await client.connect()
         
         try:
-            await client.sign_in(phone, code)
+            await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
             me = await client.get_me()
             await client.disconnect()
             
@@ -808,12 +753,15 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return ConversationHandler.END
             
         except SessionPasswordNeededError:
-            ctx.user_data["add_temp_client"] = client
+            ctx.user_data["add_temp_client"] = session_file
             await status_msg.edit_text(get_text(uid, "enter_2fa"), parse_mode="Markdown")
             return PASSWORD
         except PhoneCodeInvalidError:
             await status_msg.edit_text("❌ Неверный код. Попробуйте ещё раз.")
             return CODE
+        except PhoneCodeExpiredError:
+            await status_msg.edit_text("❌ Код истёк. Запустите добавление заново /add_account")
+            return ConversationHandler.END
         except Exception as e:
             await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
             return ConversationHandler.END
@@ -837,38 +785,42 @@ async def add_account_password(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     api_hash = ctx.user_data["add_api_hash"]
     session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
     
-    client = ctx.user_data.get("add_temp_client")
-    if not client:
-        client = TelegramClient(session_file, api_id, api_hash)
-        await client.connect()
+    client = TelegramClient(session_file, api_id, api_hash)
     
     try:
-        await client.sign_in(password=password)
-        me = await client.get_me()
-        await client.disconnect()
+        await client.connect()
         
-        accounts = load_reporter_accounts()
-        next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
-        
-        new_acc = {
-            "id": next_id,
-            "phone": phone,
-            "api_id": api_id,
-            "api_hash": api_hash,
-            "session_file": session_file,
-            "proxy": None,
-            "is_active": True,
-            "reports_today": 0,
-            "max_reports_per_day": 50
-        }
-        accounts.append(new_acc)
-        save_reporter_accounts(accounts)
-        reporter.load_accounts()
-        await reporter.connect(next_id)
-        
-        await status_msg.edit_text(get_text(uid, "session_created", phone, next_id), parse_mode="Markdown")
-        return ConversationHandler.END
-        
+        try:
+            await client.sign_in(password=password)
+            me = await client.get_me()
+            await client.disconnect()
+            
+            accounts = load_reporter_accounts()
+            next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
+            
+            new_acc = {
+                "id": next_id,
+                "phone": phone,
+                "api_id": api_id,
+                "api_hash": api_hash,
+                "session_file": session_file,
+                "proxy": None,
+                "is_active": True,
+                "reports_today": 0,
+                "max_reports_per_day": 50
+            }
+            accounts.append(new_acc)
+            save_reporter_accounts(accounts)
+            reporter.load_accounts()
+            await reporter.connect(next_id)
+            
+            await status_msg.edit_text(get_text(uid, "session_created", phone, next_id), parse_mode="Markdown")
+            return ConversationHandler.END
+            
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
+            return ConversationHandler.END
+            
     except Exception as e:
         await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
         return ConversationHandler.END
