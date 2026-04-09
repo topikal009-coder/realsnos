@@ -22,7 +22,8 @@ from telethon.tl.types import InputReportReasonSpam, InputPhoneContact
 from telethon.errors import (
     FloodWaitError, PeerFloodError, SessionPasswordNeededError,
     PhoneCodeInvalidError, PhoneCodeExpiredError, PhoneNumberInvalidError,
-    PhoneNumberBannedError, ApiIdInvalidError, AccessTokenInvalidError
+    PhoneNumberBannedError, ApiIdInvalidError, AccessTokenInvalidError,
+    PhoneCodeEmptyError, PhoneCodeHashEmptyError
 )
 
 import aiohttp
@@ -120,7 +121,7 @@ TEXTS = {
         "enter_phone": "📱 *Введите номер телефона*\n\nВ формате: `+380XXXXXXXXX`\n\nДля отмены введите /cancel",
         "enter_api_id": "🔑 *Введите API ID*\n\nПолучить можно на https://my.telegram.org/apps\n\nДля отмены введите /cancel",
         "enter_api_hash": "🔐 *Введите API Hash*\n\nПолучить можно на https://my.telegram.org/apps\n\nДля отмены введите /cancel",
-        "enter_code": "📨 *Введите код подтверждения*\n\nКод отправлен в Telegram\n\n⏰ Код действителен несколько минут\n\nДля отмены введите /cancel",
+        "enter_code": "📨 *Введите код подтверждения*\n\nКод отправлен в Telegram (проверьте приложение)\n\nЕсли код не приходит, попробуйте войти в приложение Telegram на телефоне\n\nДля отмены введите /cancel",
         "enter_2fa": "🔐 *Введите пароль двухфакторной аутентификации*\n\nДля отмены введите /cancel",
         "session_created": "✅ *Сессия создана!*\n\nАккаунт {} успешно добавлен.\nID аккаунта: {}\n\nТеперь аккаунт готов к использованию.",
         "cancel": "❌ *Действие отменено*",
@@ -128,7 +129,8 @@ TEXTS = {
         "connecting": "🔄 Подключение к Telegram...",
         "invalid_phone": "❌ Неверный номер телефона",
         "invalid_api_id": "❌ Неверный API ID",
-        "code_sent": "✅ Код подтверждения отправлен в Telegram!\n\nВведите его ниже:"
+        "code_sent": "✅ Код подтверждения отправлен в Telegram!\n\nПроверьте приложение Telegram на телефоне",
+        "already_authorized": "✅ Аккаунт уже авторизован!\n\nСессия создана, можно использовать."
     },
     "uk": {
         "welcome": "🌟 *Ласкаво просимо!* 🌟\n\n👇 *Оберіть дію:*",
@@ -171,7 +173,7 @@ TEXTS = {
         "enter_phone": "📱 *Введіть номер телефону*\n\nУ форматі: `+380XXXXXXXXX`\n\nДля скасування введіть /cancel",
         "enter_api_id": "🔑 *Введіть API ID*\n\nОтримати можна на https://my.telegram.org/apps\n\nДля скасування введіть /cancel",
         "enter_api_hash": "🔐 *Введіть API Hash*\n\nОтримати можна на https://my.telegram.org/apps\n\nДля скасування введіть /cancel",
-        "enter_code": "📨 *Введіть код підтвердження*\n\nКод надіслано в Telegram\n\n⏰ Код дійсний кілька хвилин\n\nДля скасування введіть /cancel",
+        "enter_code": "📨 *Введіть код підтвердження*\n\nКод надіслано в Telegram (перевірте додаток)\n\nЯкщо код не приходить, спробуйте увійти в додаток Telegram на телефоні\n\nДля скасування введіть /cancel",
         "enter_2fa": "🔐 *Введіть пароль двофакторної аутентифікації*\n\nДля скасування введіть /cancel",
         "session_created": "✅ *Сесію створено!*\n\nАкаунт {} успішно додано.\nID акаунта: {}\n\nТепер акаунт готовий до використання.",
         "cancel": "❌ *Дію скасовано*",
@@ -179,7 +181,8 @@ TEXTS = {
         "connecting": "🔄 Підключення до Telegram...",
         "invalid_phone": "❌ Невірний номер телефону",
         "invalid_api_id": "❌ Невірний API ID",
-        "code_sent": "✅ Код підтвердження надіслано в Telegram!\n\nВведіть його нижче:"
+        "code_sent": "✅ Код підтвердження надіслано в Telegram!\n\nПеревірте додаток Telegram на телефоні",
+        "already_authorized": "✅ Акаунт вже авторизовано!\n\nСесію створено, можна використовувати."
     },
     "en": {
         "welcome": "🌟 *Welcome!* 🌟\n\n👇 *Choose an action:*",
@@ -222,7 +225,7 @@ TEXTS = {
         "enter_phone": "📱 *Enter phone number*\n\nFormat: `+380XXXXXXXXX`\n\nTo cancel, type /cancel",
         "enter_api_id": "🔑 *Enter API ID*\n\nGet it at https://my.telegram.org/apps\n\nTo cancel, type /cancel",
         "enter_api_hash": "🔐 *Enter API Hash*\n\nGet it at https://my.telegram.org/apps\n\nTo cancel, type /cancel",
-        "enter_code": "📨 *Enter confirmation code*\n\nCode sent to Telegram\n\n⏰ Code is valid for a few minutes\n\nTo cancel, type /cancel",
+        "enter_code": "📨 *Enter confirmation code*\n\nCode sent to Telegram (check the app)\n\nIf code doesn't arrive, try logging into Telegram app on your phone\n\nTo cancel, type /cancel",
         "enter_2fa": "🔐 *Enter 2FA password*\n\nTo cancel, type /cancel",
         "session_created": "✅ *Session created!*\n\nAccount {} successfully added.\nAccount ID: {}\n\nAccount is now ready to use.",
         "cancel": "❌ *Action cancelled*",
@@ -230,7 +233,8 @@ TEXTS = {
         "connecting": "🔄 Connecting to Telegram...",
         "invalid_phone": "❌ Invalid phone number",
         "invalid_api_id": "❌ Invalid API ID",
-        "code_sent": "✅ Confirmation code sent to Telegram!\n\nEnter it below:"
+        "code_sent": "✅ Confirmation code sent to Telegram!\n\nCheck the Telegram app on your phone",
+        "already_authorized": "✅ Account already authorized!\n\nSession created, ready to use."
     }
 }
 
@@ -433,54 +437,6 @@ class ReporterManager:
                 "max_reports": a.get("max_reports_per_day", 50),
                 "client": None
             }
-    
-    async def create_account_with_code(self, phone: str, api_id: int, api_hash: str, code: str, password: str = None) -> tuple:
-        os.makedirs(SESSIONS_DIR, exist_ok=True)
-        session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
-        client = TelegramClient(session_file, api_id, api_hash)
-        
-        try:
-            await client.connect()
-            
-            try:
-                # Пытаемся войти с кодом
-                await client.sign_in(phone=phone, code=code)
-            except SessionPasswordNeededError:
-                if password:
-                    await client.sign_in(password=password)
-                else:
-                    raise Exception("Требуется пароль 2FA")
-            
-            me = await client.get_me()
-            await client.disconnect()
-            
-            accounts = load_reporter_accounts()
-            next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
-            
-            new_acc = {
-                "id": next_id,
-                "phone": phone,
-                "api_id": api_id,
-                "api_hash": api_hash,
-                "session_file": session_file,
-                "proxy": None,
-                "is_active": True,
-                "reports_today": 0,
-                "max_reports_per_day": 50
-            }
-            accounts.append(new_acc)
-            save_reporter_accounts(accounts)
-            self.load_accounts()
-            
-            await self.connect(next_id)
-            return next_id, True, None
-            
-        except PhoneCodeInvalidError:
-            return None, False, "Неверный код подтверждения"
-        except PhoneCodeExpiredError:
-            return None, False, "Код истёк"
-        except Exception as e:
-            return None, False, str(e)
     
     async def connect(self, acc_id: int):
         acc = self.by_id.get(acc_id)
@@ -737,19 +693,7 @@ async def add_account_api_hash(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     ctx.user_data["add_api_hash"] = api_hash
-    
-    # Просто запрашиваем код без предварительной отправки
-    # Telethon отправит код автоматически при вызове sign_in
-    await update.message.reply_text(get_text(uid, "enter_code"), parse_mode="Markdown")
-    return CODE
-
-async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    code = update.message.text.strip()
-    
-    if code == "/cancel":
-        await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
-        return ConversationHandler.END
+    ctx.user_data["add_code_requested"] = False
     
     status_msg = await update.message.reply_text(get_text(uid, "connecting"), parse_mode="Markdown")
     
@@ -763,12 +707,12 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         await client.connect()
         
-        try:
-            # Пытаемся войти - Telethon сам отправит код если нужно
-            await client.sign_in(phone=phone, code=code)
-            me = await client.get_me()
+        # Проверяем, не авторизован ли уже аккаунт
+        if await client.is_user_authorized():
             await client.disconnect()
+            await status_msg.edit_text(get_text(uid, "already_authorized"), parse_mode="Markdown")
             
+            # Сохраняем аккаунт
             accounts = load_reporter_accounts()
             next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
             
@@ -788,13 +732,60 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reporter.load_accounts()
             await reporter.connect(next_id)
             
-            await status_msg.edit_text(get_text(uid, "session_created", phone, next_id), parse_mode="Markdown")
+            return ConversationHandler.END
+        
+        # Отправляем запрос кода
+        await status_msg.edit_text(get_text(uid, "sending_code"), parse_mode="Markdown")
+        
+        try:
+            # Пробуем отправить код
+            await client.send_code_request(phone)
+            ctx.user_data["add_code_requested"] = True
+            await status_msg.edit_text(get_text(uid, "code_sent"), parse_mode="Markdown")
+            await status_msg.edit_text(get_text(uid, "enter_code"), parse_mode="Markdown")
+            return CODE
+        except Exception as e:
+            error_msg = str(e)
+            if "FLOOD_WAIT" in error_msg:
+                await status_msg.edit_text(f"❌ Слишком много попыток. Подождите немного и попробуйте снова.\n\nНачните заново: /add_account")
+            else:
+                await status_msg.edit_text(f"❌ Ошибка: {error_msg}\n\nПроверьте API ID и API Hash.\nНачните заново: /add_account")
             return ConversationHandler.END
             
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)}\n\nНачните заново: /add_account")
+        return ConversationHandler.END
+
+async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    code = update.message.text.strip()
+    
+    if code == "/cancel":
+        await update.message.reply_text(get_text(uid, "cancel"), parse_mode="Markdown")
+        return ConversationHandler.END
+    
+    if not ctx.user_data.get("add_code_requested"):
+        await update.message.reply_text("❌ Сначала отправьте /add_account и введите все данные.\n\nНачните заново: /add_account")
+        return ConversationHandler.END
+    
+    status_msg = await update.message.reply_text(get_text(uid, "connecting"), parse_mode="Markdown")
+    
+    phone = ctx.user_data["add_phone"]
+    api_id = ctx.user_data["add_api_id"]
+    api_hash = ctx.user_data["add_api_hash"]
+    session_file = os.path.join(SESSIONS_DIR, f"acc_{phone.replace('+', '')}")
+    
+    client = TelegramClient(session_file, api_id, api_hash)
+    
+    try:
+        await client.connect()
+        
+        try:
+            # Пробуем войти с кодом
+            await client.sign_in(phone=phone, code=code)
         except SessionPasswordNeededError:
-            # Требуется 2FA
-            ctx.user_data["add_temp_client"] = session_file
             await status_msg.edit_text(get_text(uid, "enter_2fa"), parse_mode="Markdown")
+            ctx.user_data["add_temp_client"] = session_file
             return PASSWORD
         except PhoneCodeInvalidError:
             await status_msg.edit_text("❌ Неверный код. Попробуйте ещё раз.\n\nВведите код из Telegram:")
@@ -802,12 +793,35 @@ async def add_account_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         except PhoneCodeExpiredError:
             await status_msg.edit_text("❌ Код истёк. Начните добавление заново командой /add_account")
             return ConversationHandler.END
-        except Exception as e:
-            await status_msg.edit_text(f"❌ Ошибка: {str(e)}\n\nНачните заново: /add_account")
-            return ConversationHandler.END
-            
+        
+        # Успешный вход
+        me = await client.get_me()
+        await client.disconnect()
+        
+        accounts = load_reporter_accounts()
+        next_id = max([acc.get("id", 0) for acc in accounts], default=0) + 1
+        
+        new_acc = {
+            "id": next_id,
+            "phone": phone,
+            "api_id": api_id,
+            "api_hash": api_hash,
+            "session_file": session_file,
+            "proxy": None,
+            "is_active": True,
+            "reports_today": 0,
+            "max_reports_per_day": 50
+        }
+        accounts.append(new_acc)
+        save_reporter_accounts(accounts)
+        reporter.load_accounts()
+        await reporter.connect(next_id)
+        
+        await status_msg.edit_text(get_text(uid, "session_created", phone, next_id), parse_mode="Markdown")
+        return ConversationHandler.END
+        
     except Exception as e:
-        await status_msg.edit_text(f"❌ Ошибка подключения: {str(e)}\n\nНачните заново: /add_account")
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)}\n\nНачните заново: /add_account")
         return ConversationHandler.END
 
 async def add_account_password(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
